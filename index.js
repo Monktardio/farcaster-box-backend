@@ -125,14 +125,15 @@ async function generateBoxCharacter(pfpUrl) {
     `;
 
     try {
+        console.log("[LOG] Starte KI-Generierung bei Replicate...");
+
         const output = await replicate.run(
-            "tstramer/controlnet-sdxl:f547b746a583e7403399b626e852d7e0892095f9e1eb1c2b5ecf0a3e8c9b9777",
+            "tstramer/controlnet-sdxl",   // <--- WICHTIG: ohne Versions-Hash!
             {
                 input: {
                     image: pfpUrl,
-                    prompt,
-                    negative_prompt:
-                        "mutated, deformed, text, watermark, photo-realistic, low quality",
+                    prompt: prompt,
+                    negative_prompt: "mutated, ugly, deformed, blurry, low resolution, photo, realistic, human, human face, lid, cap, bottle top, text, watermark",
                     control_type: "depth",
                     guess_mode: false,
                     image_dimensions: "1024x1024",
@@ -142,13 +143,11 @@ async function generateBoxCharacter(pfpUrl) {
         );
 
         return output[0];
-
     } catch (error) {
-        console.error("[ERROR] KI Fehler:", error.message);
+        console.error("[ERROR] KI Fehler:", error.response?.data || error.message);
         return null;
     }
 }
-
 
 // ----------------------------------------------------
 // 6. API: START GENERATION
@@ -262,4 +261,5 @@ app.post("/api/mint-nft", async (req, res) => {
 // 9. SERVERLESS EXPORT (WICHTIG)
 // ----------------------------------------------------
 export default app;
+
 
