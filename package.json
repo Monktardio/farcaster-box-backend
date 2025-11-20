@@ -1,0 +1,21 @@
+{
+  "name": "farcaster-box-backend",
+  "type": "module",
+  "version": "1.0.0",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js"
+  },
+  "dependencies": {
+    "@neynar/nodejs-sdk": "^3.89.0",
+    "@thirdweb-dev/sdk": "^4.0.99",
+    "axios": "^1.13.2",
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "ethers": "^5.8.0",
+    "express": "^5.1.0",
+    "form-data": "^4.0.5",
+    "replicate": "^1.4.0",
+    "thirdweb": "^5.112.3"
+  }
+}
