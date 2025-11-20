@@ -135,50 +135,37 @@ async function generateBoxCharacter(pfpUrl) {
 // ----------------------------------------------------
 // 6. API: START GENERATION
 // ----------------------------------------------------
-app.post("/api/start-generation", async (req, res) => {
-    const { fid } = req.body;
+// TEMPORÄRER MOCK-MINT – nur zum Testen des Flows
+app.post("/api/mint-nft", async (req, res) => {
+    const { fid, recipientAddress } = req.body;
 
-    if (!fid) {
-        return res.status(400).json({ error: "Missing FID" });
+    console.log("[MOCK MINT] Anfrage erhalten:", { fid, recipientAddress });
+
+    if (!fid || !recipientAddress) {
+        return res.status(400).json({ error: "Missing parameters." });
     }
 
-    if (MINT_CACHE[fid] && MINT_CACHE[fid].status !== "error") {
-        return res.json({ status: MINT_CACHE[fid].status });
+    const entry = MINT_CACHE[fid];
+
+    if (!entry || entry.status !== "ready") {
+        return res.status(409).json({ error: "Not ready to mint." });
     }
 
-    MINT_CACHE[fid] = { status: "processing" };
+    // Hier würden wir normal Thirdweb benutzen – vorerst überspringen wir das.
+    const fakeTxHash = "0x" + Math.floor(Math.random() * 1e16).toString(16).padEnd(64, "0");
 
-    res.json({
-        status: "processing",
-        message: "Generation started."
+    // Eintrag aus dem Cache entfernen, damit derselbe FID nicht unendlich minten kann
+    delete MINT_CACHE[fid];
+
+    console.log("[MOCK MINT] Erfolgreich, txHash:", fakeTxHash);
+
+    return res.json({
+        success: true,
+        txHash: fakeTxHash
     });
-
-    try {
-        const pfpUrl = await getPfpUrl(fid);
-        if (!pfpUrl) throw new Error("No PFP found.");
-
-        const aiImage = await generateBoxCharacter(pfpUrl);
-        if (!aiImage) throw new Error("AI generation failed.");
-
-        const ipfsUri = await uploadImageToIpfs(aiImage, fid);
-        if (!ipfsUri) throw new Error("IPFS failed.");
-
-        const metadataUri = await uploadMetadataToIpfs(fid, ipfsUri);
-        if (!metadataUri) throw new Error("Metadata failed.");
-
-        MINT_CACHE[fid] = {
-            status: "ready",
-            metadataUri,
-            ipfsUri
-        };
-
-        console.log(`[SUCCESS] FID ${fid} ready for mint.`);
-
-    } catch (err) {
-        console.error(`[CRITICAL] Fehler bei Generation FID ${fid}:`, err.message);
-        MINT_CACHE[fid] = { status: "error", message: err.message };
-    }
 });
+
+
 
 
 // ----------------------------------------------------
@@ -244,6 +231,7 @@ app.post("/api/mint-nft", async (req, res) => {
 // 9. SERVERLESS EXPORT (WICHTIG)
 // ----------------------------------------------------
 export default app;
+
 
 
 
