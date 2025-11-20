@@ -8,6 +8,7 @@ import { NeynarAPIClient, Configuration } from '@neynar/nodejs-sdk';
 import { uploadImageToIpfs, uploadMetadataToIpfs } from './ipfs_uploader.js';
 import { ThirdwebSDK } from '@thirdweb-dev/sdk';
 import { ethers } from 'ethers';
+import crypto from "crypto";
 
 dotenv.config();
 
@@ -137,33 +138,51 @@ async function generateBoxCharacter(pfpUrl) {
 // ----------------------------------------------------
 // TEMPORÄRER MOCK-MINT – nur zum Testen des Flows
 app.post("/api/mint-nft", async (req, res) => {
-    const { fid, recipientAddress } = req.body;
+    try {
+        console.log("[MOCK MINT] Anfrage erhalten, Body:", req.body);
 
-    console.log("[MOCK MINT] Anfrage erhalten:", { fid, recipientAddress });
+        const { fid, recipientAddress } = req.body || {};
 
-    if (!fid || !recipientAddress) {
-        return res.status(400).json({ error: "Missing parameters." });
+        // Basic Validation
+        if (!fid || !recipientAddress) {
+            console.warn("[MOCK MINT] Missing parameters:", { fid, recipientAddress });
+            return res.status(400).json({
+                success: false,
+                error: "Missing parameters (fid oder recipientAddress)."
+            });
+        }
+
+        const entry = MINT_CACHE[fid];
+
+        if (!entry || entry.status !== "ready") {
+            console.warn("[MOCK MINT] Not ready to mint für FID:", fid, "Entry:", entry);
+            return res.status(409).json({
+                success: false,
+                error: "Not ready to mint – kein 'ready'-Status im Cache."
+            });
+        }
+
+        // Fake Tx Hash generieren (nur fürs UI)
+        const fakeTxHash = "0x" + crypto.randomBytes(32).toString("hex");
+        console.log("[MOCK MINT] Erfolgreich, Fake TxHash:", fakeTxHash);
+
+        // Eintrag entfernen, damit nicht endlos mit demselben FID gemintet wird
+        delete MINT_CACHE[fid];
+
+        return res.json({
+            success: true,
+            txHash: fakeTxHash
+        });
+    } catch (err) {
+        console.error("[MOCK MINT ERROR]", err);
+        return res.status(500).json({
+            success: false,
+            error: "Mock mint failed.",
+            details: err.message || String(err)
+        });
     }
-
-    const entry = MINT_CACHE[fid];
-
-    if (!entry || entry.status !== "ready") {
-        return res.status(409).json({ error: "Not ready to mint." });
-    }
-
-    // Hier würden wir normal Thirdweb benutzen – vorerst überspringen wir das.
-    const fakeTxHash = "0x" + Math.floor(Math.random() * 1e16).toString(16).padEnd(64, "0");
-
-    // Eintrag aus dem Cache entfernen, damit derselbe FID nicht unendlich minten kann
-    delete MINT_CACHE[fid];
-
-    console.log("[MOCK MINT] Erfolgreich, txHash:", fakeTxHash);
-
-    return res.json({
-        success: true,
-        txHash: fakeTxHash
-    });
 });
+
 
 
 
@@ -231,6 +250,7 @@ app.post("/api/mint-nft", async (req, res) => {
 // 9. SERVERLESS EXPORT (WICHTIG)
 // ----------------------------------------------------
 export default app;
+
 
 
 
