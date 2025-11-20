@@ -117,41 +117,17 @@ async function getPfpUrl(fid) {
 // 5. HELPER: KI / REPLICATE Bild generieren
 // ----------------------------------------------------
 async function generateBoxCharacter(pfpUrl) {
-    const prompt = `
-        A detailed 3D character portrait in the stylized box-shaped container style,
-        thick black outlines, matte plastic, box figure, Funko Pop style,
-        cute cyberpunk monkey, vibrant colors, digital art, centered, studio lighting.
-    `;
-
     try {
-        console.log("[LOG] Starte KI-Generierung bei Replicate (stable-diffusion)...");
+        console.log("[MOCK] Nutze Platzhalter-Bild statt Replicate-KI.");
 
-        const output = await replicate.run(
-            "stability-ai/stable-diffusion",   // sehr stabiles, öffentliches Modell
-            {
-                input: {
-                    prompt: prompt
-                    // wir lassen alle anderen Parameter auf Default:
-                    // - Bildgröße
-                    // - Steps
-                    // - Guidance
-                }
-            }
-        );
+        // Hier kannst du jedes beliebige Bild nehmen
+        // z.B. ein eigenes PNG/JPG von deiner Monktardio- oder Box-Collection
+        const placeholderUrl = "https://picsum.photos/1024/1024";
 
-        // stable-diffusion gibt ein Array von Bild-URLs zurück
-        if (Array.isArray(output) && output.length > 0) {
-            return output[0];
-        }
-
-        console.error("[ERROR] KI Fehler: Keine Ausgabe erhalten.");
-        return null;
-
+        // So als wäre es das Ergebnis der KI
+        return placeholderUrl;
     } catch (error) {
-        console.error(
-            "[ERROR] KI Fehler:",
-            error.response?.data || error.message || error.toString()
-        );
+        console.error("[ERROR] Mock-Generation fehlgeschlagen:", error.message);
         return null;
     }
 }
@@ -268,6 +244,7 @@ app.post("/api/mint-nft", async (req, res) => {
 // 9. SERVERLESS EXPORT (WICHTIG)
 // ----------------------------------------------------
 export default app;
+
 
 
 
