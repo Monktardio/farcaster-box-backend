@@ -1,14 +1,10 @@
-// api/index.js (FINAL & STABIL - Serverless Export für Vercel)
+// index.js – Stabiler Express-Server für Vercel (MVP ohne Thirdweb/Replicate/Neynar)
 
-import express from 'express';
-import dotenv from 'dotenv';
-import Replicate from 'replicate';
-import cors from 'cors';
-import { NeynarAPIClient, Configuration } from '@neynar/nodejs-sdk';
-import { uploadImageToIpfs, uploadMetadataToIpfs } from './ipfs_uploader.js';
-import { ThirdwebSDK } from '@thirdweb-dev/sdk';
-import { ethers } from 'ethers';
+import express from "express";
+import dotenv from "dotenv";
+import cors from "cors";
 import crypto from "crypto";
+import { uploadImageToIpfs, uploadMetadataToIpfs } from "./ipfs_uploader.js";
 
 dotenv.config();
 
@@ -16,243 +12,189 @@ const app = express();
 const PORT = process.env.PORT || 3000;
 
 // ----------------------------------------------------
-// 1. INITIALISIERUNG
+// In-Memory Cache für Jobs
 // ----------------------------------------------------
-const neynarConfig = new Configuration({ apiKey: process.env.NEYNAR_API_KEY });
-const neynarClient = new NeynarAPIClient(neynarConfig);
-
-const replicate = new Replicate({
-    auth: process.env.REPLICATE_API_KEY
-});
-
-const wallet = new ethers.Wallet(process.env.WALLET_PRIVATE_KEY);
-
-const MINT_CACHE = {}; 
-const CONTRACT_ADDRESS = process.env.NFT_CONTRACT_ADDRESS; 
-const BASE_SEPOLIA_CHAIN_ID = 84532;
-const BASE_SEPOLIA_RPC_URL = process.env.BASE_SEPOLIA_RPC;
-
+const MINT_CACHE = {}; // { [fid]: { status, ipfsUri, metadataUri, message? } }
 
 // ----------------------------------------------------
-// 2. CORS FIX
+// CORS
 // ----------------------------------------------------
 const allowedOrigins = [
-    "https://farcaster-box-frontend.vercel.app",
-    "https://farcaster-box-frame.vercel.app"
+  "https://farcaster-box-frontend.vercel.app",
+  "https://farcaster-box-frame.vercel.app",
 ];
 
 const corsOptions = {
-    origin: (origin, callback) => {
-        if (!origin || allowedOrigins.includes(origin)) {
-            callback(null, true);
-        } else {
-            callback(new Error("Not allowed by CORS"));
-        }
-    },
-    methods: ["GET", "POST"],
+  origin: (origin, callback) => {
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+    } else {
+      console.warn("[CORS] Blocked origin:", origin);
+      callback(new Error("Not allowed by CORS"));
+    }
+  },
+  methods: ["GET", "POST"],
 };
 
 app.use(cors(corsOptions));
 app.use(express.json());
 app.use(express.urlencoded({ extended: true }));
 
-
 // ----------------------------------------------------
-// 3. THIRDWEB INITIALISIERUNG
+// MOCK-KI: Platzhalterbild anhand FID
 // ----------------------------------------------------
-let sdkInstance = null;
-
-async function getSDK() {
-    if (sdkInstance) return sdkInstance;
-
-    try {
-        const provider = new ethers.providers.JsonRpcProvider(
-            BASE_SEPOLIA_RPC_URL,
-            BASE_SEPOLIA_CHAIN_ID
-        );
-
-        sdkInstance = new ThirdwebSDK(provider, {
-            signer: wallet,
-            secretKey: process.env.THIRDWEB_SECRET_KEY,
-        });
-
-        return sdkInstance;
-
-    } catch (error) {
-        console.error("[CRITICAL] SDK Init Fehlgeschlagen:", error.message);
-        throw new Error("Blockchain SDK konnte nicht initialisiert werden.");
-    }
-}
-
-
-// ----------------------------------------------------
-// 4. HELPER: Farcaster PFP holen
-// ----------------------------------------------------
-async function getPfpUrl(fid) {
-    try {
-        // fid sicher in eine Zahl umwandeln
-        const fids = [Number(fid)];
-
-        // Neynar-SDK richtig aufrufen: Objekt mit { fids }
-        const { users } = await neynarClient.fetchBulkUsers({ fids });
-
-        const user = users && users[0];
-        const pfpUrl = user?.pfp_url || null;
-
-        if (!pfpUrl) {
-            console.error("[ERROR] Kein PFP für FID gefunden:", fid);
-        }
-
-        return pfpUrl;
-    } catch (error) {
-        console.error(
-            "[ERROR] PFP fetch fehlgeschlagen:",
-            error.response?.data || error.message
-        );
-        return null;
-    }
-}
-
-
-// ----------------------------------------------------
-// 5. HELPER: KI / REPLICATE Bild generieren
-// ----------------------------------------------------
-async function generateBoxCharacter(pfpUrl) {
-    try {
-        console.log("[MOCK] Nutze Platzhalter-Bild statt Replicate-KI.");
-
-        // Hier kannst du jedes beliebige Bild nehmen
-        // z.B. ein eigenes PNG/JPG von deiner Monktardio- oder Box-Collection
-        const placeholderUrl = "https://picsum.photos/1024/1024";
-
-        // So als wäre es das Ergebnis der KI
-        return placeholderUrl;
-    } catch (error) {
-        console.error("[ERROR] Mock-Generation fehlgeschlagen:", error.message);
-        return null;
-    }
+async function generateBoxCharacter(fid) {
+  const seed = String(fid || "default");
+  const url = `https://picsum.photos/seed/${encodeURIComponent(
+    seed
+  )}/1024/1024`;
+  console.log("[MOCK KI] Nutze Platzhalterbild:", url);
+  return url;
 }
 
 // ----------------------------------------------------
-// 6. API: START GENERATION
+// POST /api/start-generation
 // ----------------------------------------------------
-// TEMPORÄRER MOCK-MINT – nur zum Testen des Flows
-app.post("/api/mint-nft", async (req, res) => {
-    try {
-        console.log("[MOCK MINT] Anfrage erhalten, Body:", req.body);
+app.post("/api/start-generation", async (req, res) => {
+  const { fid } = req.body || {};
 
-        const { fid, recipientAddress } = req.body || {};
+  if (!fid) {
+    console.warn("[START-GENERATION] Missing FID im Body");
+    return res.status(400).json({ error: "Missing FID" });
+  }
 
-        // Basic Validation
-        if (!fid || !recipientAddress) {
-            console.warn("[MOCK MINT] Missing parameters:", { fid, recipientAddress });
-            return res.status(400).json({
-                success: false,
-                error: "Missing parameters (fid oder recipientAddress)."
-            });
-        }
+  console.log("[START-GENERATION] Starte Job für FID:", fid);
 
-        const entry = MINT_CACHE[fid];
+  // Wenn bereits fertig, direkt zurückgeben
+  if (MINT_CACHE[fid] && MINT_CACHE[fid].status === "ready") {
+    console.log("[START-GENERATION] FID bereits ready, sende cached Ergebnis.");
+    return res.json({
+      status: "ready",
+      ipfsUri: MINT_CACHE[fid].ipfsUri,
+      metadataUri: MINT_CACHE[fid].metadataUri,
+    });
+  }
 
-        if (!entry || entry.status !== "ready") {
-            console.warn("[MOCK MINT] Not ready to mint für FID:", fid, "Entry:", entry);
-            return res.status(409).json({
-                success: false,
-                error: "Not ready to mint – kein 'ready'-Status im Cache."
-            });
-        }
+  // Status auf "processing" setzen
+  MINT_CACHE[fid] = { status: "processing" };
 
-        // Fake Tx Hash generieren (nur fürs UI)
-        const fakeTxHash = "0x" + crypto.randomBytes(32).toString("hex");
-        console.log("[MOCK MINT] Erfolgreich, Fake TxHash:", fakeTxHash);
+  // Sofortige Antwort an Frontend
+  res.json({
+    status: "processing",
+    message: "Generation started.",
+  });
 
-        // Eintrag entfernen, damit nicht endlos mit demselben FID gemintet wird
-        delete MINT_CACHE[fid];
+  // Hintergrund-Job: Bild + IPFS
+  try {
+    // 1. Platzhalterbild holen
+    const imageUrl = await generateBoxCharacter(fid);
 
-        return res.json({
-            success: true,
-            txHash: fakeTxHash
-        });
-    } catch (err) {
-        console.error("[MOCK MINT ERROR]", err);
-        return res.status(500).json({
-            success: false,
-            error: "Mock mint failed.",
-            details: err.message || String(err)
-        });
-    }
+    // 2. Bild zu IPFS (Pinata)
+    const ipfsImageUri = await uploadImageToIpfs(imageUrl, fid);
+    if (!ipfsImageUri) throw new Error("IPFS image upload failed.");
+
+    // 3. Metadata zu IPFS (Pinata)
+    const metadataUri = await uploadMetadataToIpfs(fid, ipfsImageUri);
+    if (!metadataUri) throw new Error("IPFS metadata upload failed.");
+
+    // 4. Cache updaten
+    MINT_CACHE[fid] = {
+      status: "ready",
+      ipfsUri: ipfsImageUri,
+      metadataUri,
+    };
+
+    console.log(
+      "[GENERATION READY] FID:",
+      fid,
+      "Bild:",
+      ipfsImageUri,
+      "Metadata:",
+      metadataUri
+    );
+  } catch (err) {
+    console.error("[GENERATION ERROR] FID:", fid, err);
+    MINT_CACHE[fid] = {
+      status: "error",
+      message: err.message || "Unknown error",
+    };
+  }
 });
 
-
-
-
-
 // ----------------------------------------------------
-// 7. API: STATUS
+// GET /api/status?fid=...
 // ----------------------------------------------------
 app.get("/api/status", (req, res) => {
-    const { fid } = req.query;
+  const { fid } = req.query || {};
 
-    if (!fid || !MINT_CACHE[fid]) {
-        return res.status(404).json({ error: "No active job." });
-    }
+  if (!fid || !MINT_CACHE[fid]) {
+    return res.status(404).json({ error: "No active job." });
+  }
 
-    res.json(MINT_CACHE[fid]);
+  return res.json(MINT_CACHE[fid]);
 });
 
-
 // ----------------------------------------------------
-// 8. API: MINT NFT
+// POST /api/mint-nft  (MOCK-MINT nur für UI-Flow)
 // ----------------------------------------------------
 app.post("/api/mint-nft", async (req, res) => {
-    const { fid, recipientAddress } = req.body;
+  try {
+    console.log("[MOCK MINT] Anfrage erhalten, Body:", req.body);
+
+    const { fid, recipientAddress } = req.body || {};
 
     if (!fid || !recipientAddress) {
-        return res.status(400).json({ error: "Missing parameters." });
+      console.warn("[MOCK MINT] Missing parameters:", { fid, recipientAddress });
+      return res.status(400).json({
+        success: false,
+        error: "Missing parameters (fid oder recipientAddress).",
+      });
     }
 
     const entry = MINT_CACHE[fid];
 
     if (!entry || entry.status !== "ready") {
-        return res.status(409).json({ error: "Not ready to mint." });
+      console.warn(
+        "[MOCK MINT] Not ready to mint für FID:",
+        fid,
+        "Entry:",
+        entry
+      );
+      return res.status(409).json({
+        success: false,
+        error: "Not ready to mint – kein 'ready'-Status im Cache.",
+      });
     }
 
-    const sdk = await getSDK().catch(() => null);
-    if (!sdk) return res.status(500).json({ error: "Blockchain connection failed." });
+    // Fake Tx Hash generieren (nur fürs UI)
+    const fakeTxHash = "0x" + crypto.randomBytes(32).toString("hex");
+    console.log("[MOCK MINT] Erfolgreich, Fake TxHash:", fakeTxHash);
 
-    try {
-        const contract = await sdk.getContract(CONTRACT_ADDRESS, "nft-collection");
+    // Cache leeren
+    delete MINT_CACHE[fid];
 
-        const tx = await contract.erc721.mint({
-            to: recipientAddress,
-            metadata: {
-                name: `Box Character #${fid}`,
-                description: "AI Box Character minted via Farcaster.",
-                uri: entry.metadataUri
-            }
-        });
-
-        delete MINT_CACHE[fid];
-
-        return res.json({
-            success: true,
-            txHash: tx.receipt.transactionHash
-        });
-
-    } catch (error) {
-        console.error("[ERROR] Minting failed:", error.message);
-        return res.status(500).json({ error: "Mint failed.", details: error.message });
-    }
+    return res.json({
+      success: true,
+      txHash: fakeTxHash,
+    });
+  } catch (err) {
+    console.error("[MOCK MINT ERROR]", err);
+    return res.status(500).json({
+      success: false,
+      error: "Mock mint failed.",
+      details: err.message || String(err),
+    });
+  }
 });
 
-
 // ----------------------------------------------------
-// 9. SERVERLESS EXPORT (WICHTIG)
+// Export für Vercel
 // ----------------------------------------------------
 export default app;
 
-
-
-
-
-
+// Optional lokal:
+if (process.env.NODE_ENV === "development") {
+  app.listen(PORT, () => {
+    console.log(`Dev-Server läuft auf http://localhost:${PORT}`);
+  });
+}
