@@ -89,10 +89,25 @@ async function getSDK() {
 // ----------------------------------------------------
 async function getPfpUrl(fid) {
     try {
-        const user = await neynarClient.fetchBulkUsers([fid]);
-        return user.users[0]?.pfp_url;
+        // fid sicher in eine Zahl umwandeln
+        const fids = [Number(fid)];
+
+        // Neynar-SDK richtig aufrufen: Objekt mit { fids }
+        const { users } = await neynarClient.fetchBulkUsers({ fids });
+
+        const user = users && users[0];
+        const pfpUrl = user?.pfp_url || null;
+
+        if (!pfpUrl) {
+            console.error("[ERROR] Kein PFP für FID gefunden:", fid);
+        }
+
+        return pfpUrl;
     } catch (error) {
-        console.error("[ERROR] PFP fetch fehlgeschlagen:", error.message);
+        console.error(
+            "[ERROR] PFP fetch fehlgeschlagen:",
+            error.response?.data || error.message
+        );
         return null;
     }
 }
@@ -247,3 +262,4 @@ app.post("/api/mint-nft", async (req, res) => {
 // 9. SERVERLESS EXPORT (WICHTIG)
 // ----------------------------------------------------
 export default app;
+
