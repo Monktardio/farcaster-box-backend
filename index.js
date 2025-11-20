@@ -118,33 +118,40 @@ async function getPfpUrl(fid) {
 // ----------------------------------------------------
 async function generateBoxCharacter(pfpUrl) {
     const prompt = `
-        A detailed character portrait in the stylized box-shaped container style,
+        A detailed 3D character portrait in the stylized box-shaped container style,
         thick black outlines, matte plastic, box figure, Funko Pop style,
-        based on the user's profile image.
-        Digital Art, vibrant colors.
+        cute cyberpunk monkey, vibrant colors, digital art, centered, studio lighting.
     `;
 
     try {
-        console.log("[LOG] Starte KI-Generierung bei Replicate...");
+        console.log("[LOG] Starte KI-Generierung bei Replicate (stable-diffusion)...");
 
         const output = await replicate.run(
-            "tstramer/controlnet-sdxl",   // <--- WICHTIG: ohne Versions-Hash!
+            "stability-ai/stable-diffusion",   // sehr stabiles, öffentliches Modell
             {
                 input: {
-                    image: pfpUrl,
-                    prompt: prompt,
-                    negative_prompt: "mutated, ugly, deformed, blurry, low resolution, photo, realistic, human, human face, lid, cap, bottle top, text, watermark",
-                    control_type: "depth",
-                    guess_mode: false,
-                    image_dimensions: "1024x1024",
-                    controlnet_conditioning_scale: 0.9
+                    prompt: prompt
+                    // wir lassen alle anderen Parameter auf Default:
+                    // - Bildgröße
+                    // - Steps
+                    // - Guidance
                 }
             }
         );
 
-        return output[0];
+        // stable-diffusion gibt ein Array von Bild-URLs zurück
+        if (Array.isArray(output) && output.length > 0) {
+            return output[0];
+        }
+
+        console.error("[ERROR] KI Fehler: Keine Ausgabe erhalten.");
+        return null;
+
     } catch (error) {
-        console.error("[ERROR] KI Fehler:", error.response?.data || error.message);
+        console.error(
+            "[ERROR] KI Fehler:",
+            error.response?.data || error.message || error.toString()
+        );
         return null;
     }
 }
@@ -261,5 +268,6 @@ app.post("/api/mint-nft", async (req, res) => {
 // 9. SERVERLESS EXPORT (WICHTIG)
 // ----------------------------------------------------
 export default app;
+
 
 
